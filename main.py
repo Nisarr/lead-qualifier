@@ -1,9 +1,17 @@
 """Main entry point for the lead qualification system."""
 
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Ensure stdout handles UTF-8 (e.g. checkmark icon) on Windows consoles without throwing UnicodeEncodeError
+if sys.stdout and sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 import config  # noqa: F401 — imported for side-effect: raises ValueError on missing env vars
 from models import LeadInput, WebhookResponse

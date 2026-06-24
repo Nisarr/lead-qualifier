@@ -30,7 +30,7 @@ class NormalizedLead(LeadInput):
 
 
 class AIAnalysis(BaseModel):
-    lead_score: int = Field(..., ge=1, le=100)
+    lead_score: int = Field(..., ge=0, le=100)
     priority_tier: Literal["Hot", "Warm", "Cold", "Manual Review"]
     intent_summary: str
     suggested_opener: str
