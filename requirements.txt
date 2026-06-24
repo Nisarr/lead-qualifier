@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+anthropic
+gspread
+google-auth
+google-auth-oauthlib
+slack-sdk
+python-dotenv
+pydantic
+httpx
+email-validator
