@@ -1,37 +1,48 @@
 # Lead Qualification Automation — Technical Assessment
 
-A FastAPI-based B2B lead qualification system that validates, AI-scores, logs, and notifies on inbound sales leads in real-time.
+A FastAPI-based B2B lead qualification system that validates, AI-scores, logs, and notifies on inbound sales leads in real-time. Implements **all three** bonus extensions: vector memory deduplication, batch processing, and synchronous webhook response.
 
 ---
 
 ## Architecture Overview
 
-Every lead submission flows through a strict 4-step pipeline before a response is returned to the caller:
+Every lead submission flows through a strict pipeline before a response is returned to the caller:
 
 ```
-                         ┌────────────────────────────────────────────────────┐
-  Webhook Caller         │               Lead Qualifier Pipeline               │
-  ─────────────          │                                                     │
-                         │  1. TRIGGER       2. FILTER        3. AI           │
-  POST /webhook/lead ───►│  ───────────      ────────         ────────        │
-                         │  Receive raw  → Validate &  →  Multi-provider  →  │
-                         │  JSON payload    normalize      AI fallback        │
-                         │                  (reject bad    chain scores       │
-                         │                   inputs)        the lead          │
-                         │                                        │            │
-                         │                           4. OUTPUT    ▼            │
-                         │                           ─────────────             │
-                         │                         ┌──────────────────┐       │
-                         │                         │  Google Sheets   │       │
-                         │                         │  (append row)    │       │
-                         │                         └──────────────────┘       │
-                         │                         ┌──────────────────┐       │
-                         │                         │  Slack Notify    │       │
-                         │                         │  (Block Kit msg) │       │
-                         │                         └──────────────────┘       │
-                         │                                        │            │
-  ◄── WebhookResponse ───│◄───────────────────────────────────────            │
-  (real-time JSON)        └────────────────────────────────────────────────────┘
+                         ┌──────────────────────────────────────────────────────────┐
+  Webhook Caller         │                Lead Qualifier Pipeline                    │
+  ─────────────          │                                                           │
+                         │  1. TRIGGER       2. FILTER        3. AI                 │
+  POST /webhook/lead ───►│  ───────────      ────────         ────────              │
+                         │  Receive raw  → Validate &  →  Vector Memory  →         │
+                         │  JSON payload    normalize      similarity check         │
+                         │                  (reject bad         │                    │
+                         │                   inputs)      Multi-provider            │
+                         │                                AI fallback chain         │
+                         │                                scores the lead           │
+                         │                                      │                    │
+                         │                          4. OUTPUT    ▼                   │
+                         │                          ─────────────                    │
+                         │                        ┌──────────────────┐              │
+                         │                        │  Google Sheets   │              │
+                         │                        │  (append row)    │              │
+                         │                        └──────────────────┘              │
+                         │                        ┌──────────────────┐              │
+                         │                        │  Slack Notify    │              │
+                         │                        │  (Block Kit msg) │              │
+                         │                        └──────────────────┘              │
+                         │                        ┌──────────────────┐              │
+                         │                        │  Vector Memory   │              │
+                         │                        │  (store embed)   │              │
+                         │                        └──────────────────┘              │
+                         │                                      │                    │
+  ◄── WebhookResponse ──│◄──────────────────────────────────────                    │
+  (real-time JSON with   └──────────────────────────────────────────────────────────┘
+   request_id, score,
+   tier, response_time)
+
+  POST /webhook/batch ───► Same pipeline × N leads → single Slack summary
+  POST /webhook/batch/csv  (CSV upload variant)
 ```
 
 **Validation failures** (missing fields, bad email, too-short message) are short-circuited before any AI call, saving tokens and cost. All submission types — including rejected and low-context leads — are logged to Google Sheets for a complete audit trail.
@@ -48,9 +59,10 @@ Every lead submission flows through a strict 4-step pipeline before a response i
 | Data Validation | **Pydantic v2** with strict field constraints |
 | Lead Logging | **Google Sheets API** via `gspread` + service account auth |
 | Notifications | **Slack SDK** (`slack-sdk`) with Block Kit messages |
+| Vector Memory | **sentence-transformers** (`all-MiniLM-L6-v2`) + SQLite + cosine similarity via `scikit-learn` |
 | Config | `python-dotenv` for environment variable management |
 | HTTP Client | `httpx` (async-capable, used in tests) |
-| Testing | `pytest` with 8 live server integration tests |
+| Testing | `pytest` with 8 core tests + standalone bonus feature tests |
 
 ---
 
@@ -119,10 +131,19 @@ curl http://localhost:8000/health
 # → {"status": "ok", "service": "lead-qualifier"}
 ```
 
+Open the contact form at `http://localhost:8000/` in your browser.
+
 ### 7. Run tests
 
 ```bash
-python -m pytest tests/ -v -s
+# Core pipeline tests (requires server running)
+python -m pytest tests/test_pipeline.py -v -s
+
+# Bonus feature tests (requires server running)
+python tests/test_integration.py
+python tests/test_vector_memory.py
+python tests/test_batch.py
+python tests/test_webhook_response.py
 ```
 
 ---
@@ -146,9 +167,6 @@ Only 5 fields are sent to the AI: `company_name`, `job_title`, `company_size`, `
 
 ### Complete audit trail in Google Sheets
 All submission types — including rejected, low-context, and error leads — are written to Google Sheets. This ensures the spreadsheet serves as a complete audit trail for every form submission, not just the ones that passed AI scoring.
-
-### Synchronous webhook response (Bonus Option C)
-Rather than acknowledging the webhook and processing asynchronously, the endpoint `await`s the full pipeline before returning. This means the form/CRM that submitted the lead gets a real-time `WebhookResponse` with the AI score, priority tier, and a personalised `next_step` message in the same request.
 
 ---
 
@@ -197,6 +215,7 @@ Vague tier labels ("Hot", "Cold") are subjective. Anchoring each tier to observa
 | Failure Mode | Handling |
 |---|---|
 | AI provider error / timeout | Each provider wrapped in `try/except` with 15s `asyncio.wait_for` timeout; next provider in chain is attempted; static fallback if all fail |
+| Pipeline-level timeout | `asyncio.wait_for` wraps the entire AI call with a 12s limit; if exceeded, the lead is routed to "Manual Review" with `ai_timeout` red flag |
 | Malformed JSON response | Two-stage parse: `json.loads()` first, then `re.search(r'\{.*\}')` regex extraction; Pydantic `ValidationError` caught; fallback if both fail |
 | Missing required fields | Caught in `validator.py` Step 1 before any API call; logged to Sheets and Slack |
 | Invalid email format | Regex validation in Step 3; logged to Sheets; rejected silently |
@@ -209,33 +228,119 @@ The pipeline is designed so that **no single external dependency failure can pre
 
 ---
 
+## Bonus: Option A — Memory / Vector Lookup
+
+Before scoring a new lead, the pipeline queries a **local vector database** to check if a similar inquiry has been seen before.
+
+### How it works
+
+1. **Embedding**: Each lead's company name, job title, and message are concatenated and embedded using the `all-MiniLM-L6-v2` sentence-transformer model (~22M parameters, runs locally, no API key needed).
+
+2. **Storage**: Embeddings are stored as JSON arrays in a SQLite database (`lead_memory.db`), along with metadata (company name, email domain, message preview, lead score, priority tier, timestamp).
+
+3. **Similarity search**: On each new lead, cosine similarity is computed against all stored embeddings. If the best match exceeds a `0.82` similarity threshold, the match metadata is returned.
+
+4. **AI context injection**: When a match is found, prior context is appended to the AI prompt:
+   ```
+   ⚠️ MEMORY CONTEXT — Similar inquiry detected:
+   Prior company: Acme Corp
+   Prior qualification: Hot (score: 92)
+   Similarity: 0.891
+   Prior message preview: We are looking for an AI-powered lead...
+   ```
+   The AI factors this into its analysis and the pipeline appends a `"returning inquiry"` red flag.
+
+5. **Singleton pattern**: The `VectorMemory` class uses a thread-safe singleton so the ~90MB model is loaded once at startup, not on every request.
+
+### Implementation files
+- `vector_memory.py` — `VectorMemory` class with `find_similar()` and `store_lead()` methods
+- `pipeline.py` — Lines 118-145: memory lookup before AI scoring, storage after scoring
+- `ai_scorer.py` — Lines 153-165: prior context injection into the AI prompt
+
+---
+
+## Bonus: Option B — Batch / Loop Processing
+
+A secondary path accepts a batch of leads at once (JSON array or CSV upload), processes each through the full pipeline with rate-limited concurrency, and sends a single consolidated Slack summary.
+
+### Endpoints
+
+| Method | Path | Content Type | Description |
+|---|---|---|---|
+| `POST` | `/webhook/batch` | `application/json` | JSON body: `{"leads": [...]}` with up to 50 LeadInput dicts |
+| `POST` | `/webhook/batch/csv` | `multipart/form-data` | CSV upload; column headers must match LeadInput fields |
+
+### How it works
+
+1. **Concurrency control**: Leads are processed concurrently using `asyncio.gather`, but an `asyncio.Semaphore(3)` caps simultaneous AI calls to 3. A `0.5s` delay is injected after each AI call to stay under provider rate limits.
+
+2. **Per-lead pipeline reuse**: Each lead in the batch runs through the exact same `run_pipeline()` function as single leads — validation, AI scoring, Sheets logging, and individual Slack notifications all apply.
+
+3. **Aggregated response**: The batch endpoint returns a single JSON response with counts by tier, total processed/rejected, and per-lead results:
+   ```json
+   {
+     "status": "batch_complete",
+     "total": 5,
+     "processed": 3,
+     "rejected": 2,
+     "breakdown": {"hot": 1, "warm": 1, "cold": 1, "manual_review": 0},
+     "results": [...]
+   }
+   ```
+
+4. **Consolidated Slack summary**: After all leads are processed, a single summary message is posted to the general Slack channel listing counts by tier and calling out hot leads by name for immediate action.
+
+5. **CSV parsing**: The `parse_csv()` helper uses Python's `csv.DictReader`, strips whitespace from all fields, and silently skips blank rows.
+
+### Implementation files
+- `batch_processor.py` — `process_batch()` (async runner with semaphore), `parse_csv()`, `BatchResult` dataclass
+- `main.py` — `/webhook/batch` and `/webhook/batch/csv` route handlers
+- `notifier.py` — `send_batch_summary()` function
+
+---
+
 ## Bonus: Option C — Synchronous Webhook Response
 
-The `/webhook/lead` endpoint uses FastAPI's native `async def` handler and `await`s the full pipeline:
+The `/webhook/lead` endpoint returns a **real-time JSON response** containing the AI score, priority tier, and a personalised next-step message — all computed synchronously before the HTTP response is sent.
 
-```python
-@app.post("/webhook/lead", response_model=WebhookResponse)
-async def webhook_lead(lead: LeadInput) -> WebhookResponse:
-    response = await run_pipeline(lead.model_dump())
-    return response
+### Enhanced `WebhookResponse` schema
+
+```json
+{
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "qualified",
+  "priority_tier": "Hot",
+  "lead_score": 87,
+  "next_step": "Hi Jordan, thank you for reaching out to us. Based on what you've shared, we can definitely help. We'd love to schedule a demo to show how our AI qualification engine can integrate with your existing sales tools. Expect a call from our team within 2 hours.",
+  "response_time_ms": 2341,
+  "version": "1.0.0"
+}
 ```
 
-This means:
-- The HTTP connection stays open during AI processing (~1–3 seconds)
-- The caller receives a structured `WebhookResponse` with the score, tier, and a personalised `next_step` message in the same request
-- A **Hot** lead gets: `"Our team will reach out within 2 hours. [personalised opener]"`
-- A **Cold** lead gets: `"Thank you for reaching out. We'll review and follow up if there's a fit."`
+### Key enhancements
 
-No background jobs, no webhooks-on-webhooks, no polling endpoints required.
+- **`request_id`** (UUID): Unique per submission, for tracking and support reference. Also set as `X-Request-ID` response header.
+- **`response_time_ms`**: Server-side elapsed time in milliseconds. Also set as `X-Response-Time-Ms` response header.
+- **`version`**: API version string for client compatibility.
+- **`X-Priority-Tier` header**: Allows the caller to route based on headers without parsing the JSON body.
+- **Personalised `next_step`**: Uses the lead's first name and tier to construct a tailored message. Hot leads get the AI's `suggested_opener` woven into the response.
+- **Timeout protection**: If the AI doesn't respond within 12 seconds, the pipeline returns a `"timeout"` status with a "Manual Review" tier, so the caller always gets a response.
+
+### Implementation files
+- `pipeline.py` — Lines 53-167: full pipeline with timing, UUID generation, timeout handling, personalised next-step builder
+- `main.py` — Lines 47-61: webhook handler with custom response headers
+- `models.py` — `WebhookResponse` with enhanced fields
 
 ---
 
 ## Test Results
 
-All 8 integration tests pass against the live server (`python -m pytest tests/ -v -s`):
+All tests pass against the live server:
+
+### Core pipeline tests (`test_pipeline.py`)
 
 | # | Test Case | Expected Outcome |
-|---|-----------|-----------------|
+|---|-----------|-----------------:|
 | 1 | Happy path — high-intent lead | `status=qualified`, tier=Hot/Warm, score > 40 |
 | 2 | Empty message string | `status=rejected` |
 | 3 | Message key omitted entirely | `status=rejected` (not 422) |
@@ -245,26 +350,34 @@ All 8 integration tests pass against the live server (`python -m pytest tests/ -
 | 7 | Missing full_name | `status=rejected` |
 | 8 | Health check | `status=ok` |
 
+### Bonus feature tests (`test_integration.py`)
+
+| # | Test Area | Checks |
+|---|-----------|--------|
+| 1 | Enhanced webhook response | `request_id` is UUID, `response_time_ms > 0`, `version=1.0.0`, personalised `next_step`, custom response headers |
+| 2 | Vector memory detection | Second lead from same company triggers memory match; SQLite stores 2 embeddings |
+| 3 | Batch processing | 5-lead batch → `batch_complete` status, tier breakdown sums, per-result `tier` and `score` fields |
+
 ---
 
 ## Known Limitations
 
-- **No deduplication** — the same lead can be submitted multiple times; each submission creates a new Sheets row and Slack notification with no cross-referencing.
 - **No rate limiting** on the `/webhook/lead` endpoint — a malicious actor could flood the pipeline with requests, consuming AI provider tokens.
 - **Google Sheets throughput** — the Sheets API enforces a ~100 requests/minute limit per project. High submission volumes would require batching writes or switching to BigQuery/a database.
 - **Synchronous AI call** — the webhook holds the HTTP connection open during AI processing (~1–3s). Under high concurrency, this increases connection pool pressure on the ASGI server.
 - **Service account credentials** stored as a local file (`credentials.json`) — in production, these should be injected via a secrets manager.
+- **Vector memory scales linearly** — cosine similarity is computed against all stored embeddings. Beyond ~10k leads, an approximate nearest-neighbour index (FAISS, pgvector) would be needed.
 
 ---
 
 ## What I'd Improve With More Time
-
-- **Vector similarity deduplication (Option A)** — embed each lead's company name + message using a sentence embedding model and store vectors in a lightweight vector DB (e.g. Qdrant or pgvector). Flag submissions from companies already in the pipeline to prevent duplicate Slack noise and wasted sales effort.
-
-- **Redis queue for high-volume batching (Option B)** — move AI scoring off the request path. Acknowledge the webhook immediately (`202 Accepted`), enqueue the lead to Redis, and process with a Celery or `arq` worker pool. This decouples submission throughput from AI provider rate limits and enables retry logic with exponential backoff.
 
 - **CRM integration** — after AI scoring, create or update a CRM contact via the HubSpot or Pipedrive REST API. Attach the `lead_score`, `priority_tier`, and `intent_summary` as custom properties, and auto-assign Hot leads to a sales rep via round-robin logic.
 
 - **Prometheus metrics endpoint** — expose `/metrics` with counters for submissions by tier, error rates per module, and AI latency histograms. Feed into Grafana for real-time pipeline health monitoring.
 
 - **Admin dashboard** — a lightweight read-only UI (Next.js or Streamlit) that reads from the Google Sheet and visualises lead volume, tier distribution, and red flag frequency over time.
+
+- **FAISS vector index** — replace the brute-force cosine similarity with a FAISS `IndexFlatIP` for sub-millisecond similarity search at scale, supporting 100k+ stored leads.
+
+- **Redis queue for ultra-high-volume** — move AI scoring off the request path with `202 Accepted`, enqueue to Redis, and process with an `arq` worker pool for true horizontal scaling.

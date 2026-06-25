@@ -1,6 +1,7 @@
 # Environment & secrets
 .env
 credentials.json
+lead_memory.db
 
 # Python
 __pycache__/

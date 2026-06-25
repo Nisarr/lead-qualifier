@@ -3,10 +3,15 @@
 Uses sentence-transformers to embed lead text and SQLite to store
 embeddings.  On each new lead, cosine similarity is checked against
 all stored embeddings to surface prior interactions.
+
+The VectorMemory class is implemented as a **singleton** so the
+sentence-transformer model (~90 MB) is loaded only once and the SQLite
+connection is reused across requests.
 """
 
 import json
 import sqlite3
+import threading
 from datetime import datetime, timezone
 
 import numpy as np
@@ -23,11 +28,31 @@ SIMILARITY_THRESHOLD = 0.82           # above this = "similar lead"
 
 
 class VectorMemory:
-    """Embeds lead text and stores/retrieves vectors via SQLite."""
+    """Embeds lead text and stores/retrieves vectors via SQLite.
+
+    Implemented as a singleton — calling ``VectorMemory()`` always returns
+    the same instance so the embedding model is loaded only once.
+    """
+
+    _instance: "VectorMemory | None" = None
+    _lock = threading.Lock()
+
+    def __new__(cls) -> "VectorMemory":
+        if cls._instance is None:
+            with cls._lock:
+                # Double-checked locking for thread safety
+                if cls._instance is None:
+                    instance = super().__new__(cls)
+                    instance._initialized = False
+                    cls._instance = instance
+        return cls._instance
 
     def __init__(self) -> None:
+        if self._initialized:
+            return
+        print("[VECTOR_MEMORY] Loading sentence-transformer model (one-time)...")
         self.model = SentenceTransformer(MODEL_NAME)
-        self.conn = sqlite3.connect(DB_PATH)
+        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute(
             """
@@ -44,6 +69,8 @@ class VectorMemory:
             """
         )
         self.conn.commit()
+        self._initialized = True
+        print("[VECTOR_MEMORY] Model loaded ✓")
 
     # ── helpers ────────────────────────────────────────────────────────
 

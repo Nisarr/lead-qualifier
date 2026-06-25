@@ -755,7 +755,7 @@
     </main>
 
     <footer class="footer">
-        <p>Powered by Aspire Tech Lead Qualification Engine &middot; AI analysis by GPT-4o-mini & Gemini</p>
+        <p>Powered by Aspire Tech Lead Qualification Engine &middot; AI analysis by Gemini, GPT-4o-mini &amp; Claude</p>
     </footer>
 
     <script>
@@ -796,7 +796,6 @@
             submitBtn.disabled = true;
             responseCard.classList.remove('visible');
 
-            const startTime = performance.now();
 
             try {
                 const res = await fetch('/webhook/lead', {
@@ -806,7 +805,6 @@
                 });
 
                 const result = await res.json();
-                const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
 
                 if (result.status === 'rejected' || result.status === 'low_context') {
                     showResponse('error', '⚠️', 'Submission Issue', result.next_step);
@@ -829,9 +827,13 @@
                                 <div class="score-bar-fill ${tierClass}" id="scoreBarFill"></div>
                             </div>
                         </div>
-                        <div class="meta-item" style="grid-column: 1 / -1;">
+                        <div class="meta-item">
                             <div class="meta-label">Processing Time</div>
-                            <div class="meta-value" style="font-size:14px; font-weight:500;">${elapsed}s — AI-scored in real time</div>
+                            <div class="meta-value" style="font-size:14px; font-weight:500;">${result.response_time_ms}ms — AI-scored in real time</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Request ID</div>
+                            <div class="meta-value" style="font-size:11px; font-weight:400; font-family:monospace; word-break:break-all;">${result.request_id}</div>
                         </div>
                     `);
 
