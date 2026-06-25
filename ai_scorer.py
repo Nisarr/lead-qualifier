@@ -129,10 +129,14 @@ async def _call_anthropic(api_key: str, user_prompt: str) -> AIAnalysis:
 
 # ── Main Entry Point ──────────────────────────────────────────────────
 
-async def score_lead(lead: NormalizedLead) -> AIAnalysis:
+async def score_lead(
+    lead: NormalizedLead, prior_context: dict | None = None
+) -> AIAnalysis:
     """Score a lead using a multi-provider fallback chain.
 
     Only the fields the AI needs for reasoning are sent — not the full payload.
+    If *prior_context* is supplied (from vector memory), it is appended so the
+    LLM can factor repeat-inquiry signals into its analysis.
     """
     if not lead.message or not lead.message.strip():
         return _FALLBACK
@@ -145,6 +149,20 @@ async def score_lead(lead: NormalizedLead) -> AIAnalysis:
         f"Budget: {lead.budget_range}\n"
         f"Message: {lead.message}"
     )
+
+    # Inject memory context when a similar prior lead was detected
+    if prior_context is not None:
+        user_prompt += (
+            f"\n\n⚠️ MEMORY CONTEXT — Similar inquiry detected:\n"
+            f"Prior company: {prior_context['company_name']}\n"
+            f"Prior qualification: {prior_context['prior_tier']} "
+            f"(score: {prior_context['prior_score']})\n"
+            f"Similarity: {prior_context['similarity_score']}\n"
+            f"Prior message preview: {prior_context['message_preview']}\n\n"
+            f"Factor this into your analysis. If this appears to be a returning "
+            f"company or repeat inquiry, note it in red_flags as "
+            f"\"returning inquiry - prior tier: {prior_context['prior_tier']}\""
+        )
 
     # Provider 1: Gemini 2.0 Flash Lite via OpenAI Compatibility Layer
     if config.GEMINI_API_KEY:

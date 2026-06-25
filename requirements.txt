@@ -10,3 +10,6 @@ python-dotenv
 pydantic
 httpx
 email-validator
+sentence-transformers
+numpy
+scikit-learn

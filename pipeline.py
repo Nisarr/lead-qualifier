@@ -7,6 +7,7 @@ from models import EnrichedLead, WebhookResponse
 from notifier import send_slack_notification
 from sheets_writer import write_to_sheets
 from validator import validate_and_normalize
+from vector_memory import VectorMemory
 
 
 async def run_pipeline(raw_data: dict) -> WebhookResponse:
@@ -59,8 +60,21 @@ async def run_pipeline(raw_data: dict) -> WebhookResponse:
             next_step="Submission could not be processed.",
         )
 
-    # STEP 2 — AI Scoring
-    analysis = await score_lead(result)
+    # ── Memory lookup ──────────────────────────────────────────────────
+    memory = VectorMemory()
+    prior_context = memory.find_similar(result)
+
+    # STEP 2 — AI Scoring (with optional memory context)
+    analysis = await score_lead(result, prior_context=prior_context)
+
+    # Store this lead for future memory
+    memory.store_lead(result, analysis.lead_score, analysis.priority_tier)
+
+    # If prior context found, add to red_flags if not already there
+    if prior_context and "returning" not in str(analysis.red_flags):
+        analysis.red_flags.append(
+            f"returning inquiry - similar to prior {prior_context['prior_tier']} lead"
+        )
 
     # STEP 3 — Merge NormalizedLead + AIAnalysis into a single EnrichedLead
     enriched = EnrichedLead(**result.model_dump(), **analysis.model_dump())
