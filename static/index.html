@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aspire Tech — Let's Build Something Together</title>
+    <meta name="description" content="Contact Aspire Tech for B2B automation solutions. Get a response within 2 hours.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --bg-card-hover: rgba(255, 255, 255, 0.05);
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-focus: rgba(99, 102, 241, 0.5);
+            --text-primary: #f1f1f4;
+            --text-secondary: #8b8b9e;
+            --text-muted: #5a5a6e;
+            --accent-primary: #6366f1;
+            --accent-hover: #818cf8;
+            --accent-glow: rgba(99, 102, 241, 0.15);
+            --gradient-start: #6366f1;
+            --gradient-end: #a855f7;
+            --success-bg: rgba(34, 197, 94, 0.08);
+            --success-border: rgba(34, 197, 94, 0.25);
+            --success-text: #4ade80;
+            --error-bg: rgba(239, 68, 68, 0.08);
+            --error-border: rgba(239, 68, 68, 0.25);
+            --error-text: #f87171;
+            --hot-bg: rgba(239, 68, 68, 0.1);
+            --hot-border: rgba(239, 68, 68, 0.3);
+            --hot-text: #f87171;
+            --warm-bg: rgba(251, 191, 36, 0.1);
+            --warm-border: rgba(251, 191, 36, 0.3);
+            --warm-text: #fbbf24;
+            --cold-bg: rgba(96, 165, 250, 0.1);
+            --cold-border: rgba(96, 165, 250, 0.3);
+            --cold-text: #60a5fa;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --shadow-glow: 0 0 60px rgba(99, 102, 241, 0.08);
+            --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-smooth: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Background Effects */
+        .bg-effects {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .bg-effects::before {
+            content: '';
+            position: absolute;
+            top: -40%;
+            left: -20%;
+            width: 80%;
+            height: 80%;
+            background: radial-gradient(ellipse, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+            animation: float-slow 20s ease-in-out infinite;
+        }
+
+        .bg-effects::after {
+            content: '';
+            position: absolute;
+            bottom: -30%;
+            right: -20%;
+            width: 70%;
+            height: 70%;
+            background: radial-gradient(ellipse, rgba(168, 85, 247, 0.04) 0%, transparent 70%);
+            animation: float-slow 25s ease-in-out infinite reverse;
+        }
+
+        @keyframes float-slow {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(3%, -3%) rotate(1deg); }
+            66% { transform: translate(-2%, 2%) rotate(-1deg); }
+        }
+
+        /* Grid pattern overlay */
+        .grid-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        /* Navigation */
+        .nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(10, 10, 15, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+
+        .nav-logo-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 800;
+            color: white;
+        }
+
+        .nav-logo-text {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.5px;
+        }
+
+        .nav-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+            50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+        }
+
+        /* Main Layout */
+        .main {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 120px 40px 80px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+            align-items: start;
+        }
+
+        /* Hero Section */
+        .hero {
+            padding-top: 40px;
+            position: sticky;
+            top: 120px;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: var(--accent-glow);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent-hover);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 28px;
+        }
+
+        .hero-badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+        }
+
+        .hero h1 {
+            font-size: 48px;
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -1.5px;
+            margin-bottom: 20px;
+        }
+
+        .hero h1 .gradient-text {
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-description {
+            font-size: 17px;
+            line-height: 1.7;
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+            max-width: 460px;
+        }
+
+        .hero-features {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .hero-features li {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .feature-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+
+        /* Form Section */
+        .form-wrapper {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xl);
+            padding: 40px;
+            box-shadow: var(--shadow-glow);
+            backdrop-filter: blur(10px);
+            transition: border-color var(--transition-smooth);
+        }
+
+        .form-wrapper:hover {
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .form-header {
+            margin-bottom: 32px;
+        }
+
+        .form-header h2 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 6px;
+        }
+
+        .form-header p {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-group label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            letter-spacing: 0.2px;
+        }
+
+        .form-group label .required {
+            color: var(--accent-primary);
+            margin-left: 2px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: all var(--transition-fast);
+        }
+
+        .form-group input::placeholder,
+        .form-group textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        .form-group select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235a5a6e' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+            padding-right: 36px;
+        }
+
+        .form-group select option {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            border-color: var(--border-focus);
+            background: rgba(99, 102, 241, 0.04);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 120px;
+            line-height: 1.6;
+        }
+
+        .char-count {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-align: right;
+            margin-top: -2px;
+        }
+
+        .submit-btn {
+            grid-column: 1 / -1;
+            margin-top: 8px;
+            padding: 14px 28px;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-smooth);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .submit-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+            opacity: 0;
+            transition: opacity var(--transition-fast);
+        }
+
+        .submit-btn:hover::before {
+            opacity: 1;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.3);
+        }
+
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .submit-btn .btn-text {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        /* Spinner */
+        .spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        .submit-btn.loading .spinner { display: block; }
+        .submit-btn.loading .btn-label { display: none; }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Response Card */
+        .response-card {
+            grid-column: 1 / -1;
+            display: none;
+            margin-top: 8px;
+            padding: 24px;
+            border-radius: var(--radius-lg);
+            border: 1px solid;
+            animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .response-card.visible {
+            display: block;
+        }
+
+        .response-card.success {
+            background: var(--success-bg);
+            border-color: var(--success-border);
+        }
+
+        .response-card.error {
+            background: var(--error-bg);
+            border-color: var(--error-border);
+        }
+
+        @keyframes slide-up {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .response-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .response-icon {
+            font-size: 20px;
+        }
+
+        .response-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .response-body {
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        .response-meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .meta-item {
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: var(--radius-sm);
+        }
+
+        .meta-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 4px;
+        }
+
+        .meta-value {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .tier-badge {
+            display: inline-flex;
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 13px;
+            font-weight: 700;
+            border: 1px solid;
+        }
+
+        .tier-badge.hot {
+            background: var(--hot-bg);
+            border-color: var(--hot-border);
+            color: var(--hot-text);
+        }
+
+        .tier-badge.warm {
+            background: var(--warm-bg);
+            border-color: var(--warm-border);
+            color: var(--warm-text);
+        }
+
+        .tier-badge.cold {
+            background: var(--cold-bg);
+            border-color: var(--cold-border);
+            color: var(--cold-text);
+        }
+
+        /* Score bar */
+        .score-bar-container {
+            margin-top: 12px;
+            grid-column: 1 / -1;
+        }
+
+        .score-bar-bg {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 100px;
+            overflow: hidden;
+        }
+
+        .score-bar-fill {
+            height: 100%;
+            border-radius: 100px;
+            transition: width 1s cubic-bezier(0.16, 1, 0.3, 1);
+            width: 0%;
+        }
+
+        .score-bar-fill.hot { background: linear-gradient(90deg, #ef4444, #f97316); }
+        .score-bar-fill.warm { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .score-bar-fill.cold { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+
+        /* Footer */
+        .footer {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+            font-size: 13px;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .footer a {
+            color: var(--accent-hover);
+            text-decoration: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .main {
+                grid-template-columns: 1fr;
+                gap: 40px;
+                padding: 100px 20px 60px;
+            }
+            .hero {
+                position: static;
+                padding-top: 0;
+            }
+            .hero h1 {
+                font-size: 36px;
+            }
+            .nav {
+                padding: 16px 20px;
+            }
+            .form-wrapper {
+                padding: 28px;
+            }
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-effects"></div>
+    <div class="grid-overlay"></div>
+
+    <nav class="nav">
+        <a href="#" class="nav-logo">
+            <div class="nav-logo-icon">A</div>
+            <span class="nav-logo-text">Aspire Tech</span>
+        </a>
+        <div class="nav-status">
+            <div class="status-dot"></div>
+            AI-powered lead qualification active
+        </div>
+    </nav>
+
+    <main class="main">
+        <section class="hero">
+            <div class="hero-badge">Accepting new inquiries</div>
+            <h1>
+                Let's automate<br>
+                <span class="gradient-text">your operations.</span>
+            </h1>
+            <p class="hero-description">
+                Tell us about your biggest operational bottleneck. Our AI instantly
+                evaluates your inquiry and routes it to the right team — no waiting,
+                no black-hole inboxes.
+            </p>
+            <ul class="hero-features">
+                <li>
+                    <span class="feature-icon">⚡</span>
+                    AI-scored in under 3 seconds
+                </li>
+                <li>
+                    <span class="feature-icon">🎯</span>
+                    Hot leads get a response within 2 hours
+                </li>
+                <li>
+                    <span class="feature-icon">🔒</span>
+                    Your data is never shared or stored externally
+                </li>
+                <li>
+                    <span class="feature-icon">📊</span>
+                    Every inquiry is logged and tracked
+                </li>
+            </ul>
+        </section>
+
+        <section class="form-wrapper">
+            <div class="form-header">
+                <h2>Get in touch</h2>
+                <p>Fields marked with * are required</p>
+            </div>
+            <form id="leadForm" class="form-grid" novalidate>
+                <div class="form-group">
+                    <label for="full_name">Full Name <span class="required">*</span></label>
+                    <input type="text" id="full_name" name="full_name" placeholder="Jordan Ellis" required autocomplete="name">
+                </div>
+                <div class="form-group">
+                    <label for="email">Work Email <span class="required">*</span></label>
+                    <input type="email" id="email" name="email" placeholder="jordan@company.com" required autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="company_name">Company <span class="required">*</span></label>
+                    <input type="text" id="company_name" name="company_name" placeholder="Example Corp" required autocomplete="organization">
+                </div>
+                <div class="form-group">
+                    <label for="job_title">Job Title</label>
+                    <input type="text" id="job_title" name="job_title" placeholder="Operations Manager" autocomplete="organization-title">
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone</label>
+                    <input type="tel" id="phone" name="phone" placeholder="+1 (555) 000-0000" autocomplete="tel">
+                </div>
+                <div class="form-group">
+                    <label for="company_size">Company Size</label>
+                    <select id="company_size" name="company_size">
+                        <option value="" disabled selected>Select range</option>
+                        <option value="1-10">1 – 10 employees</option>
+                        <option value="11-50">11 – 50 employees</option>
+                        <option value="51-200">51 – 200 employees</option>
+                        <option value="201-500">201 – 500 employees</option>
+                        <option value="501+">501+ employees</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="budget_range">Budget Range</label>
+                    <select id="budget_range" name="budget_range">
+                        <option value="" disabled selected>Select range</option>
+                        <option value="< $1k/mo">Under $1k/mo</option>
+                        <option value="$1k-$5k/mo">$1k – $5k/mo</option>
+                        <option value="$5k-$15k/mo">$5k – $15k/mo</option>
+                        <option value="$15k+/mo">$15k+/mo</option>
+                        <option value="Not sure">Not sure yet</option>
+                    </select>
+                </div>
+                <div class="form-group full-width">
+                    <label for="message">How can we help? <span class="required">*</span></label>
+                    <textarea id="message" name="message" placeholder="Tell us about the operational challenge you're looking to solve. The more detail, the better we can match you with the right team." required></textarea>
+                    <div class="char-count"><span id="charCount">0</span> characters</div>
+                </div>
+                <button type="submit" class="submit-btn" id="submitBtn">
+                    <span class="btn-text">
+                        <span class="btn-label">Submit Inquiry →</span>
+                        <div class="spinner"></div>
+                    </span>
+                </button>
+                <div class="response-card" id="responseCard">
+                    <div class="response-header">
+                        <span class="response-icon" id="responseIcon"></span>
+                        <span class="response-title" id="responseTitle"></span>
+                    </div>
+                    <div class="response-body" id="responseBody"></div>
+                    <div class="response-meta" id="responseMeta"></div>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Powered by Aspire Tech Lead Qualification Engine &middot; AI analysis by GPT-4o-mini & Gemini</p>
+    </footer>
+
+    <script>
+        const form = document.getElementById('leadForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const responseCard = document.getElementById('responseCard');
+        const messageInput = document.getElementById('message');
+        const charCount = document.getElementById('charCount');
+
+        // Character counter
+        messageInput.addEventListener('input', () => {
+            charCount.textContent = messageInput.value.length;
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // Collect form data
+            const data = {
+                full_name: form.full_name.value.trim(),
+                email: form.email.value.trim(),
+                company_name: form.company_name.value.trim(),
+                job_title: form.job_title.value.trim() || '',
+                phone: form.phone.value.trim() || '',
+                company_size: form.company_size.value || '',
+                budget_range: form.budget_range.value || '',
+                message: form.message.value.trim(),
+            };
+
+            // Basic client-side validation
+            if (!data.full_name || !data.email || !data.company_name || !data.message) {
+                showResponse('error', '❌', 'Missing required fields', 'Please fill in your name, email, company, and message.');
+                return;
+            }
+
+            // Set loading state
+            submitBtn.classList.add('loading');
+            submitBtn.disabled = true;
+            responseCard.classList.remove('visible');
+
+            const startTime = performance.now();
+
+            try {
+                const res = await fetch('/webhook/lead', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+
+                const result = await res.json();
+                const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+
+                if (result.status === 'rejected' || result.status === 'low_context') {
+                    showResponse('error', '⚠️', 'Submission Issue', result.next_step);
+                } else {
+                    const tier = result.priority_tier || 'Cold';
+                    const score = result.lead_score || 0;
+                    const tierClass = tier.toLowerCase();
+
+                    showResponse('success', '✅', 'Thank you! Your inquiry has been received.', result.next_step, `
+                        <div class="meta-item">
+                            <div class="meta-label">Lead Score</div>
+                            <div class="meta-value">${score}/100</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Priority</div>
+                            <div class="meta-value"><span class="tier-badge ${tierClass}">${tier}</span></div>
+                        </div>
+                        <div class="score-bar-container">
+                            <div class="score-bar-bg">
+                                <div class="score-bar-fill ${tierClass}" id="scoreBarFill"></div>
+                            </div>
+                        </div>
+                        <div class="meta-item" style="grid-column: 1 / -1;">
+                            <div class="meta-label">Processing Time</div>
+                            <div class="meta-value" style="font-size:14px; font-weight:500;">${elapsed}s — AI-scored in real time</div>
+                        </div>
+                    `);
+
+                    // Animate score bar
+                    requestAnimationFrame(() => {
+                        setTimeout(() => {
+                            const bar = document.getElementById('scoreBarFill');
+                            if (bar) bar.style.width = `${score}%`;
+                        }, 100);
+                    });
+                }
+            } catch (err) {
+                showResponse('error', '❌', 'Connection Error', 'Could not reach the server. Please ensure the API is running on localhost:8000.');
+            } finally {
+                submitBtn.classList.remove('loading');
+                submitBtn.disabled = false;
+            }
+        });
+
+        function showResponse(type, icon, title, body, metaHTML = '') {
+            responseCard.className = `response-card visible ${type}`;
+            document.getElementById('responseIcon').textContent = icon;
+            document.getElementById('responseTitle').textContent = title;
+            document.getElementById('responseBody').textContent = body;
+            document.getElementById('responseMeta').innerHTML = metaHTML;
+            responseCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    </script>
+</body>
+</html>

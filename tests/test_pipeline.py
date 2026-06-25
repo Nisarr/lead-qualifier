@@ -1,4 +1,11 @@
-"""Unit tests for the lead qualification pipeline."""
+"""Integration tests for the lead qualification pipeline.
+
+These tests require the server to be running:
+    uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+Run with:
+    python -m pytest tests/ -v -s
+"""
 
 import httpx
 import pytest
@@ -7,8 +14,10 @@ BASE_URL = "http://localhost:8000"
 ENDPOINT = f"{BASE_URL}/webhook/lead"
 
 
+# ── Test 1: Happy Path ────────────────────────────────────────────────
+
 def test_happy_path_high_intent_lead():
-    """TEST 1 — Happy Path: High-intent lead should be scored Hot or Warm with score > 40."""
+    """A complete, high-intent lead should score Hot or Warm (score > 40)."""
     payload = {
         "full_name": "Jordan Ellis",
         "email": "jordan.ellis@examplecorp.com",
@@ -26,8 +35,10 @@ def test_happy_path_high_intent_lead():
     assert data["lead_score"] > 40, f"Expected lead_score > 40, got: {data['lead_score']}"
 
 
-def test_missing_message_field():
-    """TEST 2 — Missing/empty message: should be rejected immediately."""
+# ── Test 2: Missing Message (empty string) ────────────────────────────
+
+def test_missing_message_empty_string():
+    """An empty message string should be rejected with status 'rejected'."""
     payload = {
         "full_name": "Jane Doe",
         "email": "jane@company.com",
@@ -41,8 +52,28 @@ def test_missing_message_field():
     assert data["status"] == "rejected", f"Expected status='rejected', got: {data['status']}"
 
 
+# ── Test 3: Missing Message (key omitted entirely) ────────────────────
+
+def test_missing_message_key_omitted():
+    """A payload with no 'message' key at all should still be rejected gracefully (not 422)."""
+    payload = {
+        "full_name": "Alex Rivera",
+        "email": "alex@bigco.com",
+        "company_name": "BigCo",
+        "job_title": "VP Engineering",
+    }
+    response = httpx.post(ENDPOINT, json=payload, timeout=30.0)
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+    data = response.json()
+    print(f"\n[TEST 3] Response: {data}")
+    assert data["status"] == "rejected", f"Expected status='rejected', got: {data['status']}"
+    assert data["lead_score"] == 0
+
+
+# ── Test 4: Low-Context Message ───────────────────────────────────────
+
 def test_low_context_message():
-    """TEST 3 — Low-context message: should return low_context status."""
+    """A very short message (< 10 chars) should return low_context status."""
     payload = {
         "full_name": "Bob Smith",
         "email": "bob@test.com",
@@ -52,12 +83,16 @@ def test_low_context_message():
     response = httpx.post(ENDPOINT, json=payload, timeout=30.0)
     assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
     data = response.json()
-    print(f"\n[TEST 3] Response: {data}")
+    print(f"\n[TEST 4] Response: {data}")
     assert data["status"] == "low_context", f"Expected status='low_context', got: {data['status']}"
+    assert data["priority_tier"] == "Cold"
+    assert data["lead_score"] == 5
 
+
+# ── Test 5: Spam Lead ────────────────────────────────────────────────
 
 def test_spam_lead():
-    """TEST 4 — Spam lead: should be scored Cold with lead_score < 40."""
+    """A spam-like lead should be scored Cold with score < 40."""
     payload = {
         "full_name": "Free Money",
         "email": "promo@spam123.com",
@@ -67,6 +102,52 @@ def test_spam_lead():
     response = httpx.post(ENDPOINT, json=payload, timeout=30.0)
     assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
     data = response.json()
-    print(f"\n[TEST 4] Response: {data}")
+    print(f"\n[TEST 5] Response: {data}")
     assert data["priority_tier"] == "Cold", f"Expected priority_tier='Cold', got: {data['priority_tier']}"
-    assert data["lead_score"] < 40, f"Expected lead_score < 40 (implies red_flags present), got: {data['lead_score']}"
+    assert data["lead_score"] < 40, f"Expected lead_score < 40, got: {data['lead_score']}"
+
+
+# ── Test 6: Invalid Email Format ──────────────────────────────────────
+
+def test_invalid_email_format():
+    """An obviously malformed email should be rejected."""
+    payload = {
+        "full_name": "Test User",
+        "email": "not-an-email",
+        "company_name": "Test Co",
+        "message": "We need help with automation workflows across our organization.",
+    }
+    response = httpx.post(ENDPOINT, json=payload, timeout=30.0)
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+    data = response.json()
+    print(f"\n[TEST 6] Response: {data}")
+    assert data["status"] == "rejected", f"Expected status='rejected', got: {data['status']}"
+    assert "email" in data["next_step"].lower()
+
+
+# ── Test 7: Missing Full Name ─────────────────────────────────────────
+
+def test_missing_full_name():
+    """A payload with an empty full_name should be rejected."""
+    payload = {
+        "full_name": "",
+        "email": "anon@company.com",
+        "company_name": "Anon Corp",
+        "message": "We need help automating our sales pipeline end to end.",
+    }
+    response = httpx.post(ENDPOINT, json=payload, timeout=30.0)
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+    data = response.json()
+    print(f"\n[TEST 7] Response: {data}")
+    assert data["status"] == "rejected", f"Expected status='rejected', got: {data['status']}"
+
+
+# ── Test 8: Health Check ──────────────────────────────────────────────
+
+def test_health_endpoint():
+    """The /health endpoint should return 200 with status ok."""
+    response = httpx.get(f"{BASE_URL}/health", timeout=5.0)
+    assert response.status_code == 200
+    data = response.json()
+    print(f"\n[TEST 8] Response: {data}")
+    assert data["status"] == "ok"

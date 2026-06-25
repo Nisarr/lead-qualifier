@@ -1,13 +1,12 @@
 """Orchestrates the overall lead qualification pipeline."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ai_scorer import score_lead
 from models import EnrichedLead, WebhookResponse
 from notifier import send_slack_notification
 from sheets_writer import write_to_sheets
 from validator import validate_and_normalize
-import config
 
 
 async def run_pipeline(raw_data: dict) -> WebhookResponse:
@@ -16,8 +15,8 @@ async def run_pipeline(raw_data: dict) -> WebhookResponse:
     result, error_code = validate_and_normalize(raw_data)
 
     if error_code == "missing_required_fields":
-        # Notify the team via Slack with a minimal stub so they know a bad submission arrived
         stub = _make_error_stub(raw_data, error_code)
+        write_to_sheets(stub)           # Log rejected leads so Sheets is a complete audit trail
         send_slack_notification(stub)
         return WebhookResponse(
             status="rejected",
@@ -27,7 +26,8 @@ async def run_pipeline(raw_data: dict) -> WebhookResponse:
         )
 
     if error_code == "invalid_email_format":
-        # No Slack notification for bad email — just reject silently
+        stub = _make_error_stub(raw_data, error_code)
+        write_to_sheets(stub)           # Log even bad-email leads for analytics
         return WebhookResponse(
             status="rejected",
             priority_tier="Invalid",
@@ -36,27 +36,27 @@ async def run_pipeline(raw_data: dict) -> WebhookResponse:
         )
 
     if error_code == "low_context_message":
-        # Send a lightweight plain-text Slack notification to the general channel
-        from slack_sdk import WebClient
-        try:
-            client = WebClient(token=config.SLACK_BOT_TOKEN)
-            full_name = str(raw_data.get("full_name", "Unknown")).strip()
-            company_name = str(raw_data.get("company_name", "Unknown")).strip()
-            client.chat_postMessage(
-                channel=config.SLACK_GENERAL_CHANNEL,
-                text=(
-                    f"📎 Low-context lead from {full_name} at {company_name} "
-                    f"— message too short for AI analysis."
-                ),
-            )
-        except Exception as e:
-            print(f"[PIPELINE SLACK ERROR] {e}")
-
+        # Build a lightweight stub and route through the standard notification path
+        stub = _make_error_stub(raw_data, error_code, score=5, tier="Cold")
+        write_to_sheets(stub)
+        send_slack_notification(stub)
         return WebhookResponse(
             status="low_context",
             priority_tier="Cold",
             lead_score=5,
             next_step="Your message was too brief. We'll be in touch if we can help.",
+        )
+
+    # If the error_code is something unexpected (e.g. model_validation_failed), handle gracefully
+    if error_code is not None:
+        stub = _make_error_stub(raw_data, error_code)
+        write_to_sheets(stub)
+        send_slack_notification(stub)
+        return WebhookResponse(
+            status="rejected",
+            priority_tier="Invalid",
+            lead_score=0,
+            next_step="Submission could not be processed.",
         )
 
     # STEP 2 — AI Scoring
@@ -83,13 +83,22 @@ async def run_pipeline(raw_data: dict) -> WebhookResponse:
         status="qualified",
         priority_tier=enriched.priority_tier,
         lead_score=enriched.lead_score,
-        next_step=next_step_map[enriched.priority_tier],
+        next_step=next_step_map.get(
+            enriched.priority_tier,
+            "We received your message and will follow up shortly.",
+        ),
     )
 
 
-def _make_error_stub(raw_data: dict, error_code: str) -> EnrichedLead:
-    """Build a minimal EnrichedLead for error-path Slack notifications."""
-    now = datetime.utcnow().isoformat() + "Z"
+def _make_error_stub(
+    raw_data: dict,
+    error_code: str,
+    *,
+    score: int = 0,
+    tier: str = "Manual Review",
+) -> EnrichedLead:
+    """Build a minimal EnrichedLead for error-path logging and notifications."""
+    now = datetime.now(timezone.utc).isoformat()
     return EnrichedLead(
         full_name=str(raw_data.get("full_name", "Unknown")).strip() or "Unknown",
         email=str(raw_data.get("email", "unknown@unknown.com")).strip() or "unknown@unknown.com",
@@ -100,8 +109,8 @@ def _make_error_stub(raw_data: dict, error_code: str) -> EnrichedLead:
         budget_range=str(raw_data.get("budget_range", "N/A")).strip() or "N/A",
         message=str(raw_data.get("message", "N/A")).strip() or "N/A",
         timestamp=now,
-        lead_score=0,
-        priority_tier="Manual Review",
+        lead_score=score,
+        priority_tier=tier,
         intent_summary=f"Rejected submission — {error_code}",
         suggested_opener="",
         red_flags=[error_code],

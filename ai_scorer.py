@@ -1,15 +1,24 @@
-import os
+"""AI-powered lead scoring with multi-provider fallback chain.
+
+Provider priority: Gemini 2.0 Flash Lite → GitHub Models (GPT-4o-mini) → Anthropic Claude Haiku.
+If all providers fail, a static fallback is returned so the pipeline never crashes.
+"""
+
 import asyncio
 import json
 import re
 
-import anthropic
-from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
+from pydantic import ValidationError
 
-from config import ANTHROPIC_API_KEY
+import config
 from models import AIAnalysis, NormalizedLead
 
-LEAD_SCORING_SYSTEM_PROMPT = """
+# ── Constants ──────────────────────────────────────────────────────────
+
+API_TIMEOUT_SECONDS = 15  # Per-provider timeout to prevent hanging
+
+LEAD_SCORING_SYSTEM_PROMPT = """\
 You are a senior B2B sales qualification specialist with 10 years of experience.
 Your task is to analyze an inbound lead inquiry and return a structured qualification score.
 
@@ -43,32 +52,92 @@ _FALLBACK = AIAnalysis(
 )
 
 
+# ── Parsing ────────────────────────────────────────────────────────────
+
+def _parse_response(text: str) -> AIAnalysis:
+    """Parse an LLM text response into an AIAnalysis, with two-stage fallback.
+
+    Stage 1: Attempt direct json.loads() on the full text.
+    Stage 2: Regex-extract the first {...} block and parse that.
+    If both fail, or the parsed dict doesn't match the AIAnalysis schema, return _FALLBACK.
+    """
+    for candidate in _extract_json_candidates(text):
+        try:
+            parsed = json.loads(candidate)
+            return AIAnalysis(**parsed)
+        except (json.JSONDecodeError, ValidationError, TypeError):
+            continue
+    return _FALLBACK
+
+
+def _extract_json_candidates(text: str) -> list[str]:
+    """Yield JSON string candidates: full text first, then regex-extracted block."""
+    candidates = [text]
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        candidates.append(match.group())
+    return candidates
+
+
+# ── Provider Calls ─────────────────────────────────────────────────────
+
+async def _call_openai_compatible(
+    api_key: str,
+    base_url: str,
+    model: str,
+    user_prompt: str,
+    label: str,
+) -> AIAnalysis:
+    """Call an OpenAI-compatible API with timeout and parse the result."""
+    print(f"[AI_SCORER] Attempting {label} ({model})...")
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    response = await asyncio.wait_for(
+        client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": LEAD_SCORING_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.1,
+            max_tokens=512,
+        ),
+        timeout=API_TIMEOUT_SECONDS,
+    )
+    text = response.choices[0].message.content or ""
+    return _parse_response(text)
+
+
+async def _call_anthropic(api_key: str, user_prompt: str) -> AIAnalysis:
+    """Call Anthropic's native SDK with timeout and parse the result."""
+    print("[AI_SCORER] Attempting Anthropic (claude-haiku-4-5-20251001)...")
+    import anthropic
+
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    response = await asyncio.wait_for(
+        client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=512,
+            system=LEAD_SCORING_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+            temperature=0.1,
+        ),
+        timeout=API_TIMEOUT_SECONDS,
+    )
+    text = response.content[0].text if response.content else ""
+    return _parse_response(text)
+
+
+# ── Main Entry Point ──────────────────────────────────────────────────
+
 async def score_lead(lead: NormalizedLead) -> AIAnalysis:
-    # Guard: if message is empty or None, skip the API call entirely
-    if not lead.message:
+    """Score a lead using a multi-provider fallback chain.
+
+    Only the fields the AI needs for reasoning are sent — not the full payload.
+    """
+    if not lead.message or not lead.message.strip():
         return _FALLBACK
 
-    if os.getenv("TESTING") == "true":
-        msg = lead.message.lower()
-        if "drowning in manual data entry" in msg:
-            return AIAnalysis(
-                lead_score=85,
-                priority_tier="Hot",
-                intent_summary="Wants to automate manual data entry and onboarding.",
-                suggested_opener="I saw you are looking to automate onboarding at Example Corp.",
-                red_flags=[]
-            )
-        elif "10x leads" in msg:
-            return AIAnalysis(
-                lead_score=15,
-                priority_tier="Cold",
-                intent_summary="Spam offer offering lead generation guarantees.",
-                suggested_opener="",
-                red_flags=["spam_signals"]
-            )
-        return _FALLBACK
-
-    # Build a lean user prompt — only the fields the model needs
+    # Token-efficient: send only the 5 fields the model needs to score the lead
     user_prompt = (
         f"Company: {lead.company_name}\n"
         f"Title: {lead.job_title}\n"
@@ -77,45 +146,41 @@ async def score_lead(lead: NormalizedLead) -> AIAnalysis:
         f"Message: {lead.message}"
     )
 
-    try:
-        client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-
-        response = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=512,
-            temperature=0.1,
-            system=LEAD_SCORING_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-
-        text = response.content[0].text if response.content else ""
-
-        # Parse response: first attempt a direct json.loads()
+    # Provider 1: Gemini 2.0 Flash Lite via OpenAI Compatibility Layer
+    if config.GEMINI_API_KEY:
         try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            # Fallback: extract a JSON object from the text using regex
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            if match:
-                parsed = json.loads(match.group())
-            else:
-                print(f"[AI_SCORER ERROR] JSONDecodeError: Could not extract JSON from response: {text!r}")
-                return _FALLBACK
+            return await _call_openai_compatible(
+                api_key=config.GEMINI_API_KEY,
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                model="gemini-2.0-flash-lite",
+                user_prompt=user_prompt,
+                label="Gemini 2.0 Flash Lite",
+            )
+        except Exception as e:
+            print(f"[AI_SCORER ERROR] Gemini failed ({type(e).__name__}: {e}). Trying fallback...")
 
-        return AIAnalysis(**parsed)
+    # Provider 2: GitHub Models (GPT-4o-mini)
+    if config.GITHUB_TOKEN:
+        try:
+            return await _call_openai_compatible(
+                api_key=config.GITHUB_TOKEN,
+                base_url="https://models.inference.ai.azure.com",
+                model="gpt-4o-mini",
+                user_prompt=user_prompt,
+                label="GitHub Models",
+            )
+        except Exception as e:
+            print(f"[AI_SCORER ERROR] GitHub Models failed ({type(e).__name__}: {e}). Trying fallback...")
 
-    except anthropic.RateLimitError as e:
-        print(f"[AI_SCORER ERROR] {type(e).__name__}: {e}")
-        return _FALLBACK
-    except anthropic.APIError as e:
-        print(f"[AI_SCORER ERROR] {type(e).__name__}: {e}")
-        return _FALLBACK
-    except asyncio.TimeoutError as e:
-        print(f"[AI_SCORER ERROR] {type(e).__name__}: {e}")
-        return _FALLBACK
-    except json.JSONDecodeError as e:
-        print(f"[AI_SCORER ERROR] {type(e).__name__}: {e}")
-        return _FALLBACK
-    except Exception as e:
-        print(f"[AI_SCORER ERROR] {type(e).__name__}: {e}")
-        return _FALLBACK
+    # Provider 3: Anthropic Claude Haiku
+    if config.ANTHROPIC_API_KEY:
+        try:
+            return await _call_anthropic(
+                api_key=config.ANTHROPIC_API_KEY,
+                user_prompt=user_prompt,
+            )
+        except Exception as e:
+            print(f"[AI_SCORER ERROR] Anthropic failed ({type(e).__name__}: {e})")
+
+    print("[AI_SCORER ERROR] All AI providers failed or were not configured.")
+    return _FALLBACK

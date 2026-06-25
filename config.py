@@ -5,15 +5,34 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def get_env_var(name: str) -> str:
+
+def _require(name: str) -> str:
+    """Return an env var or raise ValueError if missing."""
     value = os.getenv(name)
     if not value:
         raise ValueError(f"Missing required environment variable: {name}")
     return value
 
-ANTHROPIC_API_KEY = get_env_var("ANTHROPIC_API_KEY")
-GOOGLE_SHEETS_ID = get_env_var("GOOGLE_SHEETS_ID")
-GOOGLE_CREDENTIALS_PATH = get_env_var("GOOGLE_CREDENTIALS_PATH")
-SLACK_BOT_TOKEN = get_env_var("SLACK_BOT_TOKEN")
-SLACK_HOT_CHANNEL = get_env_var("SLACK_HOT_CHANNEL")
-SLACK_GENERAL_CHANNEL = get_env_var("SLACK_GENERAL_CHANNEL")
+
+def _optional(name: str) -> str:
+    """Return an env var or empty string if not set."""
+    return os.getenv(name, "")
+
+
+# ── Required: integrations that must always be configured ──────────────
+GOOGLE_SHEETS_ID = _require("GOOGLE_SHEETS_ID")
+GOOGLE_CREDENTIALS_PATH = _require("GOOGLE_CREDENTIALS_PATH")
+SLACK_BOT_TOKEN = _require("SLACK_BOT_TOKEN")
+SLACK_HOT_CHANNEL = _require("SLACK_HOT_CHANNEL")
+SLACK_GENERAL_CHANNEL = _require("SLACK_GENERAL_CHANNEL")
+
+# ── Optional: at least one AI provider key should be present ───────────
+GEMINI_API_KEY = _optional("GEMINI_API_KEY")
+GITHUB_TOKEN = _optional("GITHUB_TOKEN")
+ANTHROPIC_API_KEY = _optional("ANTHROPIC_API_KEY")
+
+if not any([GEMINI_API_KEY, GITHUB_TOKEN, ANTHROPIC_API_KEY]):
+    raise ValueError(
+        "At least one AI provider key must be set: "
+        "GEMINI_API_KEY, GITHUB_TOKEN, or ANTHROPIC_API_KEY"
+    )

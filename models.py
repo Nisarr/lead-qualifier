@@ -14,7 +14,7 @@ class LeadInput(BaseModel):
     phone: str = ""
     company_size: str = ""
     budget_range: str = ""
-    message: str
+    message: str = ""
 
 
 class NormalizedLead(LeadInput):

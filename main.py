@@ -2,9 +2,12 @@
 
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 # Ensure stdout handles UTF-8 (e.g. checkmark icon) on Windows consoles without throwing UnicodeEncodeError
 if sys.stdout and sys.stdout.encoding != 'utf-8':
@@ -48,6 +51,12 @@ async def webhook_lead(lead: LeadInput) -> WebhookResponse:
     """
     response = await run_pipeline(lead.model_dump())
     return response
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    """Serve the contact form at the root URL."""
+    return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
 @app.get("/health")

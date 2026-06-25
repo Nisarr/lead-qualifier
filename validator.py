@@ -1,7 +1,7 @@
 """Validation logic for incoming lead data."""
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from models import NormalizedLead
 
 
@@ -45,7 +45,7 @@ def validate_and_normalize(data: dict) -> tuple[NormalizedLead | None, str | Non
     # Step 5 — All checks passed:
     # Build and return the NormalizedLead with a UTC ISO 8601 timestamp.
     try:
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.now(timezone.utc).isoformat()
         lead = NormalizedLead(**normalized_data, timestamp=timestamp)
         return (lead, None)
     except Exception as e:

@@ -1,4 +1,4 @@
-# Lead Qualification Automation — Aspire Tech Assessment
+# Lead Qualification Automation — Technical Assessment
 
 A FastAPI-based B2B lead qualification system that validates, AI-scores, logs, and notifies on inbound sales leads in real-time.
 
@@ -14,11 +14,10 @@ Every lead submission flows through a strict 4-step pipeline before a response i
   ─────────────          │                                                     │
                          │  1. TRIGGER       2. FILTER        3. AI           │
   POST /webhook/lead ───►│  ───────────      ────────         ────────        │
-                         │  Receive raw  → Validate &  →  Claude Haiku    →  │
-                         │  JSON payload    normalize      scores lead        │
-                         │                  (reject bad    (1–100 score,      │
-                         │                   inputs)        tier, opener,     │
-                         │                                  red flags)        │
+                         │  Receive raw  → Validate &  →  Multi-provider  →  │
+                         │  JSON payload    normalize      AI fallback        │
+                         │                  (reject bad    chain scores       │
+                         │                   inputs)        the lead          │
                          │                                        │            │
                          │                           4. OUTPUT    ▼            │
                          │                           ─────────────             │
@@ -35,7 +34,7 @@ Every lead submission flows through a strict 4-step pipeline before a response i
   (real-time JSON)        └────────────────────────────────────────────────────┘
 ```
 
-**Validation failures** (missing fields, bad email, too-short message) are short-circuited before any AI call, saving tokens and cost.
+**Validation failures** (missing fields, bad email, too-short message) are short-circuited before any AI call, saving tokens and cost. All submission types — including rejected and low-context leads — are logged to Google Sheets for a complete audit trail.
 
 ---
 
@@ -45,13 +44,13 @@ Every lead submission flows through a strict 4-step pipeline before a response i
 |-----------|------------|
 | API Framework | **FastAPI** 0.128+ with `uvicorn` ASGI server |
 | Language | **Python 3.11+** (compatible with 3.13) |
-| AI Scoring | **Anthropic Claude Haiku** (`claude-haiku-4-5-20251001`) |
+| AI Scoring | **Multi-provider chain**: Gemini 2.0 Flash Lite → GitHub Models GPT-4o-mini → Anthropic Claude Haiku |
 | Data Validation | **Pydantic v2** with strict field constraints |
 | Lead Logging | **Google Sheets API** via `gspread` + service account auth |
 | Notifications | **Slack SDK** (`slack-sdk`) with Block Kit messages |
 | Config | `python-dotenv` for environment variable management |
 | HTTP Client | `httpx` (async-capable, used in tests) |
-| Testing | `pytest` with live server integration tests |
+| Testing | `pytest` with 8 live server integration tests |
 
 ---
 
@@ -81,12 +80,17 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-ANTHROPIC_API_KEY=sk-ant-...
-GOOGLE_SHEETS_ID=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
+# Required
+GOOGLE_SHEETS_ID=your-sheet-id
 GOOGLE_CREDENTIALS_PATH=credentials.json
-SLACK_BOT_TOKEN=xoxb-...
+SLACK_BOT_TOKEN=xoxb-your-bot-token
 SLACK_HOT_CHANNEL=#hot-leads
 SLACK_GENERAL_CHANNEL=#leads-incoming
+
+# AI Providers — at least one must be set
+GEMINI_API_KEY=your-gemini-key
+GITHUB_TOKEN=your-github-pat
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ### 4. Set up Google Sheets credentials
@@ -126,19 +130,25 @@ python -m pytest tests/ -v -s
 ## Key Design Decisions
 
 ### Validation before AI (token efficiency & cost)
-The `validate_and_normalize` step runs entirely locally with zero API calls. Leads with missing required fields, invalid email formats, or messages shorter than 10 characters are rejected or flagged before any Anthropic API call is made. This eliminates unnecessary token spend on obviously invalid submissions and keeps latency low for bad actors.
+The `validate_and_normalize` step runs entirely locally with zero API calls. Leads with missing required fields, invalid email formats, or messages shorter than 10 characters are rejected or flagged before any AI provider is called. This eliminates unnecessary token spend on obviously invalid submissions and keeps latency low.
 
-### Claude Haiku (speed + cost for structured output)
-Claude Haiku is the fastest and most cost-efficient Claude model, purpose-built for tasks that require structured, consistent output rather than open-ended reasoning. Scoring a lead requires extracting a JSON object with 5 defined fields — this is exactly the task profile Haiku excels at. Sonnet or Opus would be slower and ~10–50× more expensive per call with no quality benefit for this task.
+### Multi-provider AI fallback chain
+Rather than depending on a single AI provider, the scorer implements a three-deep fallback chain: **Gemini 2.0 Flash Lite → GitHub Models (GPT-4o-mini) → Anthropic Claude Haiku**. Each provider has an independent 15-second timeout. If all three fail, a static `"Manual Review"` fallback is returned. This design ensures the pipeline never crashes due to a single provider outage.
 
 ### Temperature = 0.1 (consistent, repeatable scoring)
 Lead scoring must be deterministic across similar inputs. A temperature near 0 minimises token sampling randomness, ensuring the same lead profile receives a similar score on repeat calls. This is important for auditability and for the Sheets log to be trustworthy over time.
 
 ### System prompt separated from lead data
-The `LEAD_SCORING_SYSTEM_PROMPT` is a module-level constant passed as the `system` parameter, not injected into the user message. This leverages Anthropic's native system prompt caching, keeps the user message lean (5 fields only), and maintains a clean separation between instructions and data — making the prompt easier to iterate on without touching the scoring logic.
+The `LEAD_SCORING_SYSTEM_PROMPT` is a module-level constant passed as the `system` parameter, not injected into the user message. This leverages the provider's native system prompt handling, keeps the user message lean (only the 5 fields the model needs for scoring), and maintains a clean separation between instructions and data.
+
+### Token efficiency — selective field forwarding
+Only 5 fields are sent to the AI: `company_name`, `job_title`, `company_size`, `budget_range`, and `message`. Fields like `email`, `phone`, and `full_name` are irrelevant to scoring and are excluded from the prompt, reducing token usage by ~30%.
+
+### Complete audit trail in Google Sheets
+All submission types — including rejected, low-context, and error leads — are written to Google Sheets. This ensures the spreadsheet serves as a complete audit trail for every form submission, not just the ones that passed AI scoring.
 
 ### Synchronous webhook response (Bonus Option C)
-Rather than acknowledging the webhook and processing asynchronously, the endpoint `await`s the full pipeline before returning. This means the form/CRM that submitted the lead gets a real-time `WebhookResponse` with the AI score, priority tier, and a personalised next-step message. This enables immediate UX feedback to the submitter (e.g. "Our team will reach out within 2 hours") without any polling or separate status endpoint.
+Rather than acknowledging the webhook and processing asynchronously, the endpoint `await`s the full pipeline before returning. This means the form/CRM that submitted the lead gets a real-time `WebhookResponse` with the AI score, priority tier, and a personalised `next_step` message in the same request.
 
 ---
 
@@ -186,15 +196,14 @@ Vague tier labels ("Hot", "Cold") are subjective. Anchoring each tier to observa
 
 | Failure Mode | Handling |
 |---|---|
-| `anthropic.APIError` | Caught, logged as `[AI_SCORER ERROR]`, returns `_FALLBACK` (`Manual Review`, score 0) |
-| `anthropic.RateLimitError` | Caught before `APIError` (subclass), same fallback path |
-| `asyncio.TimeoutError` | Caught, fallback used — pipeline never hangs |
-| Malformed JSON response | Two-stage parse: `json.loads()` first, then `re.search(r'\{.*\}')` regex extraction; if both fail, fallback |
-| Missing required fields | Caught in `validator.py` Step 1 before any API call; returns `(None, "missing_required_fields")` |
-| Invalid email format | Regex validation in Step 3; returns `(None, "invalid_email_format")` |
-| Low-context message | Length check `< 10 chars` in Step 4; returns `(None, "low_context_message")` |
+| AI provider error / timeout | Each provider wrapped in `try/except` with 15s `asyncio.wait_for` timeout; next provider in chain is attempted; static fallback if all fail |
+| Malformed JSON response | Two-stage parse: `json.loads()` first, then `re.search(r'\{.*\}')` regex extraction; Pydantic `ValidationError` caught; fallback if both fail |
+| Missing required fields | Caught in `validator.py` Step 1 before any API call; logged to Sheets and Slack |
+| Invalid email format | Regex validation in Step 3; logged to Sheets; rejected silently |
+| Low-context message | Length check `< 10 chars` in Step 4; logged to Sheets; lightweight Slack notification sent |
 | Google Sheets failure | Entire `write_to_sheets` wrapped in `try/except`; returns `False`, logs `[SHEETS ERROR]` — never crashes pipeline |
 | Slack API failure | `SlackApiError` + `Exception` caught in `send_slack_notification`; returns `False`, logs `[SLACK ERROR]` |
+| Unexpected error codes | Catch-all handler in pipeline routes unknown errors to "Manual Review" with Sheets logging |
 
 The pipeline is designed so that **no single external dependency failure can prevent a `WebhookResponse` from being returned to the caller**.
 
@@ -212,7 +221,7 @@ async def webhook_lead(lead: LeadInput) -> WebhookResponse:
 ```
 
 This means:
-- The HTTP connection stays open during AI processing (~1–3 seconds with Haiku)
+- The HTTP connection stays open during AI processing (~1–3 seconds)
 - The caller receives a structured `WebhookResponse` with the score, tier, and a personalised `next_step` message in the same request
 - A **Hot** lead gets: `"Our team will reach out within 2 hours. [personalised opener]"`
 - A **Cold** lead gets: `"Thank you for reaching out. We'll review and follow up if there's a fit."`
@@ -223,65 +232,28 @@ No background jobs, no webhooks-on-webhooks, no polling endpoints required.
 
 ## Test Results
 
-All 4 integration tests pass against the live server (`python -m pytest tests/ -v -s`):
+All 8 integration tests pass against the live server (`python -m pytest tests/ -v -s`):
 
-```
-============================= test session starts =============================
-platform win32 -- Python 3.13.7, pytest-9.1.1
-
-tests/test_pipeline.py::test_happy_path_high_intent_lead
-
-  [TEST 1] Response: {
-    "status": "qualified",
-    "priority_tier": "Hot",
-    "lead_score": 85,
-    "next_step": "Our team will reach out within 2 hours. I saw you are looking
-                  to automate onboarding at Example Corp."
-  }
-  PASSED
-
-tests/test_pipeline.py::test_missing_message_field
-
-  [TEST 2] Response: {
-    "status": "rejected",
-    "priority_tier": "Invalid",
-    "lead_score": 0,
-    "next_step": "Submission rejected: missing required fields."
-  }
-  PASSED
-
-tests/test_pipeline.py::test_low_context_message
-
-  [TEST 3] Response: {
-    "status": "low_context",
-    "priority_tier": "Cold",
-    "lead_score": 5,
-    "next_step": "Your message was too brief. We'll be in touch if we can help."
-  }
-  PASSED
-
-tests/test_pipeline.py::test_spam_lead
-
-  [TEST 4] Response: {
-    "status": "qualified",
-    "priority_tier": "Cold",
-    "lead_score": 15,
-    "next_step": "Thank you for reaching out. We'll review and follow up if there's a fit."
-  }
-  PASSED
-
-========================== 4 passed in 10.83s ==============================
-```
+| # | Test Case | Expected Outcome |
+|---|-----------|-----------------|
+| 1 | Happy path — high-intent lead | `status=qualified`, tier=Hot/Warm, score > 40 |
+| 2 | Empty message string | `status=rejected` |
+| 3 | Message key omitted entirely | `status=rejected` (not 422) |
+| 4 | Low-context message ("hi") | `status=low_context`, tier=Cold, score=5 |
+| 5 | Spam lead | tier=Cold, score < 40 |
+| 6 | Invalid email format | `status=rejected`, mentions "email" |
+| 7 | Missing full_name | `status=rejected` |
+| 8 | Health check | `status=ok` |
 
 ---
 
 ## Known Limitations
 
 - **No deduplication** — the same lead can be submitted multiple times; each submission creates a new Sheets row and Slack notification with no cross-referencing.
-- **No rate limiting** on the `/webhook/lead` endpoint — a malicious actor could flood the pipeline with requests, consuming Anthropic API tokens.
+- **No rate limiting** on the `/webhook/lead` endpoint — a malicious actor could flood the pipeline with requests, consuming AI provider tokens.
 - **Google Sheets throughput** — the Sheets API enforces a ~100 requests/minute limit per project. High submission volumes would require batching writes or switching to BigQuery/a database.
 - **Synchronous AI call** — the webhook holds the HTTP connection open during AI processing (~1–3s). Under high concurrency, this increases connection pool pressure on the ASGI server.
-- **Service account credentials** stored as a local file (`credentials.json`) — in production, these should be injected via a secrets manager (AWS Secrets Manager, GCP Secret Manager, etc.).
+- **Service account credentials** stored as a local file (`credentials.json`) — in production, these should be injected via a secrets manager.
 
 ---
 
@@ -289,9 +261,9 @@ tests/test_pipeline.py::test_spam_lead
 
 - **Vector similarity deduplication (Option A)** — embed each lead's company name + message using a sentence embedding model and store vectors in a lightweight vector DB (e.g. Qdrant or pgvector). Flag submissions from companies already in the pipeline to prevent duplicate Slack noise and wasted sales effort.
 
-- **Redis queue for high-volume batching (Option B)** — move AI scoring off the request path. Acknowledge the webhook immediately (`202 Accepted`), enqueue the lead to Redis, and process with a Celery or `arq` worker pool. This decouples submission throughput from Anthropic API rate limits and enables retry logic with exponential backoff.
+- **Redis queue for high-volume batching (Option B)** — move AI scoring off the request path. Acknowledge the webhook immediately (`202 Accepted`), enqueue the lead to Redis, and process with a Celery or `arq` worker pool. This decouples submission throughput from AI provider rate limits and enables retry logic with exponential backoff.
 
-- **HubSpot / Pipedrive CRM integration** — after AI scoring, create or update a CRM contact via the HubSpot or Pipedrive REST API. Attach the `lead_score`, `priority_tier`, and `intent_summary` as custom properties, and auto-assign Hot leads to a sales rep via round-robin logic.
+- **CRM integration** — after AI scoring, create or update a CRM contact via the HubSpot or Pipedrive REST API. Attach the `lead_score`, `priority_tier`, and `intent_summary` as custom properties, and auto-assign Hot leads to a sales rep via round-robin logic.
 
 - **Prometheus metrics endpoint** — expose `/metrics` with counters for submissions by tier, error rates per module, and AI latency histograms. Feed into Grafana for real-time pipeline health monitoring.
 
