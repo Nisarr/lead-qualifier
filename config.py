@@ -36,3 +36,7 @@ if not any([GEMINI_API_KEY, GITHUB_TOKEN, ANTHROPIC_API_KEY]):
         "At least one AI provider key must be set: "
         "GEMINI_API_KEY, GITHUB_TOKEN, or ANTHROPIC_API_KEY"
     )
+
+# ── Pipeline settings ─────────────────────────────────────────────────
+WEBHOOK_TIMEOUT_SECONDS = 12   # AI must respond within this time
+APP_VERSION = "1.0.0"

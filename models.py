@@ -42,7 +42,11 @@ class EnrichedLead(NormalizedLead, AIAnalysis):
 
 
 class WebhookResponse(BaseModel):
-    status: str
-    priority_tier: str
-    lead_score: int
-    next_step: str
+    request_id: str           # UUID for tracking
+    status: str               # "qualified" | "rejected" | "low_context" | "timeout"
+    priority_tier: str        # Hot | Warm | Cold | Manual Review | Invalid
+    lead_score: int           # 0-100
+    next_step: str            # Personalized message for the caller
+    response_time_ms: int     # How long the full pipeline took
+    version: str              # APP_VERSION
+

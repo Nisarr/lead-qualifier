@@ -1,16 +1,59 @@
 """Orchestrates the overall lead qualification pipeline."""
 
+import asyncio
+import time
+import uuid
 from datetime import datetime, timezone
 
 from ai_scorer import score_lead
-from models import EnrichedLead, WebhookResponse
+from models import AIAnalysis, EnrichedLead, WebhookResponse
 from notifier import send_slack_notification
 from sheets_writer import write_to_sheets
 from validator import validate_and_normalize
 from vector_memory import VectorMemory
 
+import config
+
+
+# ── Personalized next-step builder ─────────────────────────────────────
+
+def _build_next_step(enriched: EnrichedLead) -> str:
+    """Build a personalized next-step message based on tier and name."""
+    tier = enriched.priority_tier
+    name = enriched.full_name.split()[0]  # first name only
+
+    if tier == "Hot":
+        return (
+            f"Hi {name}, thank you for reaching out to us. "
+            f"Based on what you've shared, we can definitely help. "
+            f"{enriched.suggested_opener} "
+            f"Expect a call from our team within 2 hours."
+        )
+    elif tier == "Warm":
+        return (
+            f"Hi {name}, thanks for getting in touch. "
+            f"We've received your inquiry and a specialist will "
+            f"review it and follow up within 24 hours."
+        )
+    elif tier == "Cold":
+        return (
+            f"Hi {name}, thank you for your message. "
+            f"We'll review your inquiry and reach out if there's "
+            f"a strong fit for our services."
+        )
+    else:  # Manual Review or timeout
+        return (
+            f"Hi {name}, we've received your message "
+            f"and will get back to you shortly."
+        )
+
+
+# ── Main pipeline ─────────────────────────────────────────────────────
 
 async def run_pipeline(raw_data: dict) -> WebhookResponse:
+
+    request_id = str(uuid.uuid4())
+    start_time = time.time()
 
     # STEP 1 — Validate & Normalize
     result, error_code = validate_and_normalize(raw_data)
@@ -20,20 +63,26 @@ async def run_pipeline(raw_data: dict) -> WebhookResponse:
         write_to_sheets(stub)           # Log rejected leads so Sheets is a complete audit trail
         send_slack_notification(stub)
         return WebhookResponse(
+            request_id=request_id,
             status="rejected",
             priority_tier="Invalid",
             lead_score=0,
             next_step="Submission rejected: missing required fields.",
+            response_time_ms=int((time.time() - start_time) * 1000),
+            version=config.APP_VERSION,
         )
 
     if error_code == "invalid_email_format":
         stub = _make_error_stub(raw_data, error_code)
         write_to_sheets(stub)           # Log even bad-email leads for analytics
         return WebhookResponse(
+            request_id=request_id,
             status="rejected",
             priority_tier="Invalid",
             lead_score=0,
             next_step="Submission rejected: invalid email format.",
+            response_time_ms=int((time.time() - start_time) * 1000),
+            version=config.APP_VERSION,
         )
 
     if error_code == "low_context_message":
@@ -42,10 +91,13 @@ async def run_pipeline(raw_data: dict) -> WebhookResponse:
         write_to_sheets(stub)
         send_slack_notification(stub)
         return WebhookResponse(
+            request_id=request_id,
             status="low_context",
             priority_tier="Cold",
             lead_score=5,
             next_step="Your message was too brief. We'll be in touch if we can help.",
+            response_time_ms=int((time.time() - start_time) * 1000),
+            version=config.APP_VERSION,
         )
 
     # If the error_code is something unexpected (e.g. model_validation_failed), handle gracefully
@@ -54,18 +106,34 @@ async def run_pipeline(raw_data: dict) -> WebhookResponse:
         write_to_sheets(stub)
         send_slack_notification(stub)
         return WebhookResponse(
+            request_id=request_id,
             status="rejected",
             priority_tier="Invalid",
             lead_score=0,
             next_step="Submission could not be processed.",
+            response_time_ms=int((time.time() - start_time) * 1000),
+            version=config.APP_VERSION,
         )
 
     # ── Memory lookup ──────────────────────────────────────────────────
     memory = VectorMemory()
     prior_context = memory.find_similar(result)
 
-    # STEP 2 — AI Scoring (with optional memory context)
-    analysis = await score_lead(result, prior_context=prior_context)
+    # STEP 2 — AI Scoring (with timeout protection)
+    try:
+        analysis = await asyncio.wait_for(
+            score_lead(result, prior_context=prior_context),
+            timeout=config.WEBHOOK_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        print(f"[TIMEOUT] Request {request_id} exceeded {config.WEBHOOK_TIMEOUT_SECONDS}s")
+        analysis = AIAnalysis(
+            lead_score=0,
+            priority_tier="Manual Review",
+            intent_summary="AI timed out — routed to manual review.",
+            suggested_opener="",
+            red_flags=["ai_timeout"],
+        )
 
     # Store this lead for future memory
     memory.store_lead(result, analysis.lead_score, analysis.priority_tier)
@@ -85,22 +153,17 @@ async def run_pipeline(raw_data: dict) -> WebhookResponse:
     # STEP 5 — Send Slack Notification
     send_slack_notification(enriched)
 
-    # STEP 6 — Build and return the synchronous WebhookResponse
-    next_step_map = {
-        "Hot": "Our team will reach out within 2 hours. " + enriched.suggested_opener,
-        "Warm": "We'll review your inquiry and be in touch within 24 hours.",
-        "Cold": "Thank you for reaching out. We'll review and follow up if there's a fit.",
-        "Manual Review": "We received your message and will follow up shortly.",
-    }
+    # STEP 6 — Build and return the enhanced WebhookResponse
+    response_time_ms = int((time.time() - start_time) * 1000)
 
     return WebhookResponse(
-        status="qualified",
+        request_id=request_id,
+        status="timeout" if "ai_timeout" in analysis.red_flags else "qualified",
         priority_tier=enriched.priority_tier,
         lead_score=enriched.lead_score,
-        next_step=next_step_map.get(
-            enriched.priority_tier,
-            "We received your message and will follow up shortly.",
-        ),
+        next_step=_build_next_step(enriched),
+        response_time_ms=response_time_ms,
+        version=config.APP_VERSION,
     )
 
 

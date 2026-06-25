@@ -1,10 +1,17 @@
 """Sends notifications about leads to Slack channels."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 import config
 from models import EnrichedLead
+
+if TYPE_CHECKING:
+    from batch_processor import BatchResult
 
 
 def send_slack_notification(lead: EnrichedLead) -> bool:
@@ -93,3 +100,54 @@ def send_slack_notification(lead: EnrichedLead) -> bool:
     except Exception as e:
         print(f"[SLACK ERROR] {e}")
         return False
+
+
+def send_batch_summary(result: BatchResult) -> bool:
+    """Send a single consolidated Slack message summarising the batch run."""
+    try:
+        client = WebClient(token=config.SLACK_BOT_TOKEN)
+
+        # Build the hot-leads action list
+        hot_lines = ""
+        for r in result.results:
+            if r.get("tier") == "Hot":
+                hot_lines += f"  • {r['name']} @ {r['company']} (score: {r['score']})\n"
+
+        text = (
+            "📊 *BATCH PROCESSING COMPLETE*\n"
+            "─────────────────────────\n"
+            f"Total received: {result.total}\n"
+            f"✅ Processed:   {result.processed}\n"
+            f"❌ Rejected:    {result.rejected}\n\n"
+            "📈 *Breakdown:*\n"
+            f"🔥 Hot:           {result.hot_count}\n"
+            f"🌡️  Warm:          {result.warm_count}\n"
+            f"❄️  Cold:          {result.cold_count}\n"
+            f"⚠️  Manual Review: {result.manual_review_count}\n"
+        )
+
+        if hot_lines:
+            text += f"\n🔥 *Hot Leads to action now:*\n{hot_lines}"
+
+        blocks = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": text},
+            }
+        ]
+
+        client.chat_postMessage(
+            channel=config.SLACK_GENERAL_CHANNEL,
+            blocks=blocks,
+            text="Batch processing complete",  # fallback for notifications
+        )
+        print("[SLACK] Batch summary sent ✓")
+        return True
+
+    except SlackApiError as e:
+        print(f"[SLACK ERROR] Batch summary failed: {e}")
+        return False
+    except Exception as e:
+        print(f"[SLACK ERROR] Batch summary failed: {e}")
+        return False
+
