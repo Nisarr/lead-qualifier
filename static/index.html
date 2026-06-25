@@ -160,6 +160,24 @@
             letter-spacing: -0.5px;
         }
 
+        .nav-links {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color var(--transition-fast);
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: var(--text-primary);
+        }
+
         .nav-status {
             display: flex;
             align-items: center;
@@ -641,10 +659,14 @@
     <div class="grid-overlay"></div>
 
     <nav class="nav">
-        <a href="#" class="nav-logo">
+        <a href="/" class="nav-logo">
             <div class="nav-logo-icon">A</div>
             <span class="nav-logo-text">Aspire Tech</span>
         </a>
+        <div class="nav-links">
+            <a href="/" class="nav-link active">Single Lead</a>
+            <a href="/batch" class="nav-link">Batch Processing</a>
+        </div>
         <div class="nav-status">
             <div class="status-dot"></div>
             AI-powered lead qualification active

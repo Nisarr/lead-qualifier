@@ -119,6 +119,12 @@ async def root():
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
+@app.get("/batch", include_in_schema=False)
+async def batch_ui():
+    """Serve the batch upload form at the /batch URL."""
+    return FileResponse(Path(__file__).parent / "static" / "batch.html")
+
+
 @app.get("/health")
 async def health():
     """Liveness check — returns ok when the service is running."""

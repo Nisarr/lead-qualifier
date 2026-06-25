@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aspire Tech — Batch Processing</title>
+    <meta name="description" content="Batch qualify leads using AI.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --bg-card-hover: rgba(255, 255, 255, 0.05);
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-focus: rgba(99, 102, 241, 0.5);
+            --text-primary: #f1f1f4;
+            --text-secondary: #8b8b9e;
+            --text-muted: #5a5a6e;
+            --accent-primary: #6366f1;
+            --accent-hover: #818cf8;
+            --accent-glow: rgba(99, 102, 241, 0.15);
+            --gradient-start: #6366f1;
+            --gradient-end: #a855f7;
+            --success-bg: rgba(34, 197, 94, 0.08);
+            --success-border: rgba(34, 197, 94, 0.25);
+            --success-text: #4ade80;
+            --error-bg: rgba(239, 68, 68, 0.08);
+            --error-border: rgba(239, 68, 68, 0.25);
+            --error-text: #f87171;
+            --hot-bg: rgba(239, 68, 68, 0.1);
+            --hot-border: rgba(239, 68, 68, 0.3);
+            --hot-text: #f87171;
+            --warm-bg: rgba(251, 191, 36, 0.1);
+            --warm-border: rgba(251, 191, 36, 0.3);
+            --warm-text: #fbbf24;
+            --cold-bg: rgba(96, 165, 250, 0.1);
+            --cold-border: rgba(96, 165, 250, 0.3);
+            --cold-text: #60a5fa;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --shadow-glow: 0 0 60px rgba(99, 102, 241, 0.08);
+            --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-smooth: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .bg-effects { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+        .bg-effects::before {
+            content: ''; position: absolute; top: -40%; left: -20%; width: 80%; height: 80%;
+            background: radial-gradient(ellipse, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+            animation: float-slow 20s ease-in-out infinite;
+        }
+        .bg-effects::after {
+            content: ''; position: absolute; bottom: -30%; right: -20%; width: 70%; height: 70%;
+            background: radial-gradient(ellipse, rgba(168, 85, 247, 0.04) 0%, transparent 70%);
+            animation: float-slow 25s ease-in-out infinite reverse;
+        }
+        @keyframes float-slow {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(3%, -3%) rotate(1deg); }
+            66% { transform: translate(-2%, 2%) rotate(-1deg); }
+        }
+
+        .grid-overlay {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background-image: linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        .nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            padding: 20px 40px; display: flex; justify-content: space-between; align-items: center;
+            background: rgba(10, 10, 15, 0.8); backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .nav-logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+        .nav-logo-icon {
+            width: 36px; height: 36px; border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; font-weight: 800; color: white;
+        }
+        .nav-logo-text { font-size: 20px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; }
+
+        .nav-links { display: flex; gap: 24px; align-items: center; }
+        .nav-link { color: var(--text-secondary); text-decoration: none; font-size: 14px; font-weight: 500; transition: color var(--transition-fast); }
+        .nav-link:hover, .nav-link.active { color: var(--text-primary); }
+
+        .nav-status { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%; background: #22c55e;
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+            50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+        }
+
+        .main {
+            position: relative; z-index: 1; max-width: 1000px; margin: 0 auto;
+            padding: 120px 40px 80px; display: flex; flex-direction: column; gap: 40px;
+        }
+
+        .header-area { text-align: center; }
+        .header-area h1 { font-size: 40px; font-weight: 800; letter-spacing: -1px; margin-bottom: 16px; }
+        .header-area h1 .gradient-text {
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .header-area p { color: var(--text-secondary); font-size: 16px; max-width: 600px; margin: 0 auto; line-height: 1.6; }
+
+        .dropzone-wrapper {
+            background: var(--bg-card); border: 2px dashed var(--border-subtle);
+            border-radius: var(--radius-xl); padding: 60px 40px; text-align: center;
+            transition: all var(--transition-smooth); cursor: pointer; position: relative;
+            box-shadow: var(--shadow-glow); backdrop-filter: blur(10px);
+        }
+        .dropzone-wrapper:hover { border-color: rgba(255, 255, 255, 0.15); background: rgba(255,255,255,0.05); }
+        .dropzone-wrapper.dragover { border-color: var(--accent-primary); background: rgba(99, 102, 241, 0.05); }
+        
+        .dropzone-icon { font-size: 48px; margin-bottom: 20px; display: inline-block; }
+        .dropzone-text { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .dropzone-subtext { font-size: 14px; color: var(--text-muted); }
+        .file-input { display: none; }
+
+        .dashboard { display: none; flex-direction: column; gap: 32px; animation: slide-up 0.5s ease; }
+        @keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+        .stat-card {
+            background: var(--bg-card); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg); padding: 20px;
+        }
+        .stat-title { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600; }
+        .stat-value { font-size: 32px; font-weight: 700; }
+        .stat-value.hot { color: var(--hot-text); }
+        .stat-value.warm { color: var(--warm-text); }
+        .stat-value.cold { color: var(--cold-text); }
+
+        .results-section {
+            background: var(--bg-card); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg); overflow: hidden;
+        }
+        .results-header { padding: 20px; border-bottom: 1px solid var(--border-subtle); font-weight: 600; }
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th, td { padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 14px; }
+        th { color: var(--text-muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { color: var(--text-secondary); }
+        .td-name { color: var(--text-primary); font-weight: 500; }
+        
+        .tier-badge {
+            display: inline-flex; padding: 4px 12px; border-radius: 100px; font-size: 12px; font-weight: 700; border: 1px solid;
+        }
+        .tier-badge.hot { background: var(--hot-bg); border-color: var(--hot-border); color: var(--hot-text); }
+        .tier-badge.warm { background: var(--warm-bg); border-color: var(--warm-border); color: var(--warm-text); }
+        .tier-badge.cold { background: var(--cold-bg); border-color: var(--cold-border); color: var(--cold-text); }
+        .tier-badge.manual { background: var(--bg-secondary); border-color: var(--border-subtle); color: var(--text-muted); }
+
+        .loading-overlay {
+            position: absolute; inset: 0; background: rgba(10, 10, 15, 0.8); backdrop-filter: blur(4px);
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            border-radius: var(--radius-xl); z-index: 10; gap: 16px;
+        }
+        .spinner {
+            width: 40px; height: 40px; border: 3px solid rgba(99, 102, 241, 0.2);
+            border-top-color: var(--accent-primary); border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .error-message {
+            margin-top: 16px; padding: 16px; background: var(--error-bg); border: 1px solid var(--error-border);
+            color: var(--error-text); border-radius: var(--radius-md); font-size: 14px; display: none;
+        }
+
+        .footer {
+            text-align: center; padding: 40px; color: var(--text-muted); font-size: 13px;
+            border-top: 1px solid var(--border-subtle); position: relative; z-index: 1; margin-top: auto;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="bg-effects"></div>
+    <div class="grid-overlay"></div>
+
+    <nav class="nav">
+        <a href="/" class="nav-logo">
+            <div class="nav-logo-icon">A</div>
+            <span class="nav-logo-text">Aspire Tech</span>
+        </a>
+        <div class="nav-links">
+            <a href="/" class="nav-link">Single Lead</a>
+            <a href="/batch" class="nav-link active">Batch Processing</a>
+        </div>
+        <div class="nav-status">
+            <div class="status-dot"></div>
+            AI-powered lead qualification active
+        </div>
+    </nav>
+
+    <main class="main">
+        <div class="header-area">
+            <h1>Process <span class="gradient-text">Leads at Scale.</span></h1>
+            <p>Upload a CSV file of your leads. Our AI will analyze intent, check past interactions, and assign a priority tier to every prospect.</p>
+        </div>
+
+        <div class="dropzone-wrapper" id="dropzone">
+            <div class="loading-overlay" id="loadingOverlay">
+                <div class="spinner"></div>
+                <div style="font-weight: 500; color: var(--text-primary);">Processing your batch...</div>
+            </div>
+            <span class="dropzone-icon">📄</span>
+            <div class="dropzone-text">Drag & Drop your CSV file here</div>
+            <div class="dropzone-subtext">or click to browse from your computer (Max 50 leads per file)</div>
+            <input type="file" class="file-input" id="fileInput" accept=".csv">
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+
+        <div class="dashboard" id="dashboard">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-title">Total Processed</div>
+                    <div class="stat-value" id="statTotal">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Hot Leads</div>
+                    <div class="stat-value hot" id="statHot">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Warm Leads</div>
+                    <div class="stat-value warm" id="statWarm">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Cold Leads</div>
+                    <div class="stat-value cold" id="statCold">0</div>
+                </div>
+            </div>
+
+            <div class="results-section">
+                <div class="results-header">Detailed Breakdown</div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Company</th>
+                                <th>Tier</th>
+                                <th>Score</th>
+                                <th>AI Summary</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            <!-- Rows will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>Powered by Aspire Tech Lead Qualification Engine &middot; AI analysis by Gemini, GPT-4o-mini &amp; Claude</p>
+    </footer>
+
+    <script>
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const dashboard = document.getElementById('dashboard');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // Stats Elements
+        const statTotal = document.getElementById('statTotal');
+        const statHot = document.getElementById('statHot');
+        const statWarm = document.getElementById('statWarm');
+        const statCold = document.getElementById('statCold');
+        const tableBody = document.getElementById('tableBody');
+
+        // Drag and drop events
+        dropzone.addEventListener('click', () => fileInput.click());
+        
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        async function handleFile(file) {
+            if (!file.name.endsWith('.csv')) {
+                showError('Please upload a valid CSV file.');
+                return;
+            }
+
+            hideError();
+            dashboard.style.display = 'none';
+            loadingOverlay.style.display = 'flex';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/webhook/batch/csv', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || data.error) {
+                    throw new Error(data.error || 'Server error occurred during processing.');
+                }
+
+                updateDashboard(data);
+
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                loadingOverlay.style.display = 'none';
+                fileInput.value = ''; // Reset input
+            }
+        }
+
+        function updateDashboard(data) {
+            statTotal.textContent = data.processed;
+            statHot.textContent = data.breakdown.hot;
+            statWarm.textContent = data.breakdown.warm;
+            statCold.textContent = data.breakdown.cold;
+
+            tableBody.innerHTML = '';
+
+            data.results.forEach(lead => {
+                const tr = document.createElement('tr');
+                
+                // Tier formatting
+                let tierClass = 'manual';
+                if (lead.priority_tier === 'Hot') tierClass = 'hot';
+                else if (lead.priority_tier === 'Warm') tierClass = 'warm';
+                else if (lead.priority_tier === 'Cold') tierClass = 'cold';
+
+                tr.innerHTML = \`
+                    <td class="td-name">\${escapeHTML(lead.full_name)}</td>
+                    <td>\${escapeHTML(lead.company_name)}</td>
+                    <td><span class="tier-badge \${tierClass}">\${escapeHTML(lead.priority_tier)}</span></td>
+                    <td style="font-weight: 600;">\${lead.lead_score}</td>
+                    <td style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="\${escapeHTML(lead.intent_summary)}">
+                        \${escapeHTML(lead.intent_summary)}
+                    </td>
+                \`;
+                tableBody.appendChild(tr);
+            });
+
+            dashboard.style.display = 'flex';
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.style.display = 'block';
+        }
+
+        function hideError() {
+            errorMessage.style.display = 'none';
+        }
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag] || tag)
+            );
+        }
+    </script>
+</body>
+</html>
