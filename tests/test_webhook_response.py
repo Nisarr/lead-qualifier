@@ -54,7 +54,7 @@ async def main():
         print(json.dumps(body, indent=2))
 
         # Validate response fields
-        print("\n── Validation ──")
+        print("\n-- Validation --")
         checks = {
             "request_id is UUID format": "-" in body.get("request_id", ""),
             "status is 'qualified'": body.get("status") == "qualified",
@@ -65,8 +65,8 @@ async def main():
             "version is '1.0.0'": body.get("version") == "1.0.0",
         }
         for check, passed in checks.items():
-            icon = "✓" if passed else "✗"
-            print(f"  {icon} {check}")
+            icon = "PASS" if passed else "FAIL"
+            print(f"  [{icon}] {check}")
 
         all_passed = all(checks.values())
         print(f"\n{'ALL CHECKS PASSED' if all_passed else 'SOME CHECKS FAILED'}")
